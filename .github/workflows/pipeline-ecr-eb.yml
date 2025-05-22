@@ -1,7 +1,8 @@
 name: pipeline-ecr-ebs
 
 on:
-  workflow_dispatch
+  push:
+    branches: [ main ]
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
