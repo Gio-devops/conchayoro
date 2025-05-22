@@ -5,6 +5,10 @@ on:
     branches: [ main ]
 
 env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   AWS_REGION: ${{ vars.AWS_REGION }}
   PROJECT_NAME: ${{ vars.PROJECT_NAME }}
   MODULE_NAME: ${{ vars.MODULE_NAME }}
@@ -12,84 +16,51 @@ env:
   STACK_NAME: "64bit Amazon Linux 2 v3.5.7 running Docker"
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     env:
       MODULE_FULLNAME: ${{ vars.PROJECT_NAME }}/${{ vars.MODULE_NAME }}
+      REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ env.AWS_REGION }}
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
+    - name: Docker build
+      run: docker build -t $MODULE_FULLNAME $MODULE_NAME
 
-      - name: Build Docker image
-        run: docker build -t ${{ env.MODULE_FULLNAME }} ${{ env.MODULE_NAME }}
+    - name: Docker tag
+      run: |
+        docker tag $MODULE_FULLNAME:$TAG \
+        $REGISTRY_URL/$MODULE_FULLNAME:$TAG
 
-      - name: Tag Docker image
-        run: |
-          docker tag ${{ env.MODULE_FULLNAME }}:${{ env.TAG }} \
-          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.MODULE_FULLNAME }}:${{ env.TAG }}
+    - name: Login to Amazon ECR
+      run: |
+        aws ecr get-login-password --region $AWS_REGION | \
+        docker login --username AWS --password-stdin $REGISTRY_URL
 
-      - name: Login to Amazon ECR
-        run: |
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
-          docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+    - name: Docker push to ECR
+      run: docker push $REGISTRY_URL/$MODULE_FULLNAME:$TAG
 
-      - name: Push Docker image to ECR
-        run: |
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.MODULE_FULLNAME }}:${{ env.TAG }}
-      
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ebconfig
-          path: |
-              frontend/.elasticbeanstalk/config.yml
-              frontend/Dockerrun.aws.json
+    - name: Replace placeholders in Dockerrun.aws.json
+      run: |
+        sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" Dockerrun.aws.json
+        sed -i "s|<PROJECT_NAME>|${PROJECT_NAME}|g" Dockerrun.aws.json
+        sed -i "s|<MODULE_NAME>|${MODULE_NAME}|g" Dockerrun.aws.json
+        sed -i "s|<TAG>|${TAG}|g" Dockerrun.aws.json
 
-  deploy:
-      runs-on: ubuntu-latest
-      needs: build
-      steps:
-        
-        - uses: actions/download-artifact@v4
-          with:
-            name: ebconfig
-            path: .
-        
-        - run: |
-            sed -i='' "s/<AWS_ACCOUNT_ID>/$AWS_ACCOUNT_ID/" Dockerrun.aws.json
-            sed -i='' "s/<PROJECT_NAME>/$PROJECT_NAME/" Dockerrun.aws.json
-            sed -i='' "s/<MODULE_NAME>/$MODULE_NAME/" Dockerrun.aws.json
-            sed -i='' "s/<TAG>/$TAG/" Dockerrun.aws.json
-        
-        - uses: actions/setup-python@v3
-          with:
-              python-version: '3.10'
-        
-        - run: |
-            python -m pip install --upgrade pip
-            pip install awsebcli
+    - name: Print final Dockerrun.aws.json
+      run: cat Dockerrun.aws.json
 
-        - name: Set up AWS credentials for EB CLI
-          run: |
-            mkdir -p ~/.aws
-            echo "[default]" > ~/.aws/credentials
-            echo "aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}" >> ~/.aws/credentials
-            echo "aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> ~/.aws/credentials
-            echo "aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}" >> ~/.aws/credentials
+    - name: Install EB CLI
+      run: |
+        pip install awsebcli --upgrade
 
-            echo "[default]" > ~/.aws/config
-            echo "region=${{ env.AWS_REGION }}" >> ~/.aws/config
-
-        - run: |
-            eb deploy --verbose
+    - name: Deploy to Elastic Beanstalk
+      run: |
+        eb init $PROJECT_NAME --platform docker --region $AWS_REGION
+        eb use $MODULE_NAME
+        eb deploy --verbose
