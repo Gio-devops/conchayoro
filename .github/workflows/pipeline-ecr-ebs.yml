@@ -59,8 +59,19 @@ jobs:
       run: |
         pip install awsebcli --upgrade
 
-    - name: Deploy to Elastic Beanstalk
+    - name: Inicializar EB CLI
       run: |
         eb init $PROJECT_NAME --platform docker --region $AWS_REGION
         eb use $MODULE_NAME
-        eb deploy --verbose
+
+    - name: Criar artefato com apenas Dockerrun.aws.json
+      run: |
+        mkdir deploy
+        cp Dockerrun.aws.json deploy/
+        cd deploy
+        zip ../deploy.zip Dockerrun.aws.json
+        cd ..
+
+    - name: Fazer deploy do artefato
+      run: |
+        eb deploy --staged --label "v-${{ github.run_number }}" --verbose
