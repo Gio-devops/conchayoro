@@ -1,77 +1,62 @@
-name: pipeline-ecr-ebs
+name: Deploy Frontend to Elastic Beanstalk
 
 on:
   push:
     branches: [ main ]
 
 env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  AWS_REGION: ${{ vars.AWS_REGION }}
-  PROJECT_NAME: ${{ vars.PROJECT_NAME }}
-  MODULE_NAME: ${{ vars.MODULE_NAME }}
-  TAG: latest
-  STACK_NAME: "64bit Amazon Linux 2 v3.5.7 running Docker"
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: 436486625381
+  PROJECT_NAME: conchayoro
+  MODULE_NAME: frontend
+  IMAGE_TAG: latest
+  ECR_REPO: 436486625381.dkr.ecr.us-east-1.amazonaws.com/conchayoro/frontend
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    env:
-      MODULE_FULLNAME: ${{ vars.PROJECT_NAME }}/${{ vars.MODULE_NAME }}
-      REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout código
+      uses: actions/checkout@v3
 
-    - uses: actions/setup-node@v4
+    - name: Configurar credenciais AWS
+      uses: aws-actions/configure-aws-credentials@v2
       with:
-        node-version: '18'
-        cache: 'npm'
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
 
-    - name: Docker build
-      run: docker build -t $MODULE_FULLNAME $MODULE_NAME
+    - name: Login no Amazon ECR
+      run: aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
 
-    - name: Docker tag
+    - name: Build imagem Docker
+      run: docker build -t $ECR_REPO:$IMAGE_TAG frontend/
+
+    - name: Push da imagem para o ECR
+      run: docker push $ECR_REPO:$IMAGE_TAG
+
+    - name: Gerar Dockerrun.aws.json
       run: |
-        docker tag $MODULE_FULLNAME:$TAG \
-        $REGISTRY_URL/$MODULE_FULLNAME:$TAG
-
-    - name: Login to Amazon ECR
-      run: |
-        aws ecr get-login-password --region $AWS_REGION | \
-        docker login --username AWS --password-stdin $REGISTRY_URL
-
-    - name: Docker push to ECR
-      run: docker push $REGISTRY_URL/$MODULE_FULLNAME:$TAG
-
-    - name: Replace placeholders in Dockerrun.aws.json
-      run: |
-        sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" Dockerrun.aws.json
-        sed -i "s|<PROJECT_NAME>|${PROJECT_NAME}|g" Dockerrun.aws.json
-        sed -i "s|<MODULE_NAME>|${MODULE_NAME}|g" Dockerrun.aws.json
-        sed -i "s|<TAG>|${TAG}|g" Dockerrun.aws.json
-
-    - name: Print final Dockerrun.aws.json
-      run: cat Dockerrun.aws.json
-
-    - name: Install EB CLI
-      run: |
-        pip install awsebcli --upgrade
+        echo '{
+          "AWSEBDockerrunVersion": "1",
+          "Image": {
+            "Name": "'$ECR_REPO':'$IMAGE_TAG'",
+            "Update": "true"
+          },
+          "Ports": [
+            {
+              "ContainerPort": "80"
+            }
+          ]
+        }' > Dockerrun.aws.json
 
     - name: Inicializar EB CLI
       run: |
-        eb init $PROJECT_NAME --platform docker --region $AWS_REGION
-        eb use $MODULE_NAME
+        cd frontend
+        eb init $PROJECT_NAME --platform docker --region $AWS_REGION --quiet
+        eb use frontend --quiet
 
-    - name: Criar artefato com apenas Dockerrun.aws.json
-      run: |
-        mkdir deploy
-        cp Dockerrun.aws.json deploy/
-        cd deploy
-        zip ../deploy.zip Dockerrun.aws.json
-        cd ..
-
-    - name: Fazer deploy do artefato
-      run: |
-        eb deploy --staged --label "v-${{ github.run_number }}" --verbose
+    - name: Deploy para Elastic Beanstalk
+      run: eb deploy --staged --label "v-${{ github.run_number }}" --verbose
+      working-directory: frontend
