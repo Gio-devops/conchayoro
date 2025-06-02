@@ -15,5 +15,14 @@
   "bugs": {
     "url": "https://github.com/Gio-devops/conchayoro/issues"
   },
-  "homepage": "https://github.com/Gio-devops/conchayoro#readme"
+  "homepage": "https://github.com/Gio-devops/conchayoro#readme",
+  "dependencies": {
+    "@nestjs/sequelize": "^11.0.0",
+    "sequelize": "^6.37.7",
+    "sequelize-typescript": "^2.1.6",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/sequelize": "^4.28.20"
+  }
 }
