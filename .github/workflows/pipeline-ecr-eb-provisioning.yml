@@ -32,16 +32,13 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
 
+      - name: List available Elastic Beanstalk solution stacks
+        run: aws elasticbeanstalk list-available-solution-stacks --region $AWS_REGION
+
       - run: |
           terraform -chdir=$TF_VAR_WORKING_DIR init \
             -backend-config="bucket=$S3_BUCKET" \
             -backend-config="key=$TF_VAR_STATE_FILE"
-
-      # Etapa opcional: importar aplicação Elastic Beanstalk existente
-      - name: Import Elastic Beanstalk Application (if not yet managed)
-        run: |
-          terraform -chdir=$TF_VAR_WORKING_DIR import \
-            aws_elastic_beanstalk_application.cyo_eba ${{ vars.PROJECT_NAME }} || echo "Skip import"
 
       - run: |
           terraform -chdir=$TF_VAR_WORKING_DIR plan \
