@@ -89,4 +89,27 @@ resource "aws_elastic_beanstalk_environment" "cyo_ebef" {
     value     = "${var.Timeout}"
   }
   
+  setting {
+  namespace = "aws:autoscaling:launchconfiguration"
+  name      = "EC2KeyName"
+  value     = aws_key_pair.gopay_bastion.key_name
+  }
+
+}
+
+resource "tls_private_key" "gopay_bastion" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "gopay_bastion" {
+  key_name   = "gopay-bastion"
+  public_key = tls_private_key.gopay_bastion.public_key_openssh
+}
+
+resource "local_file" "gopay_bastion_pem" {
+  content              = tls_private_key.gopay_bastion.private_key_pem
+  filename             = "${path.module}/gopay-bastion.pem"
+  file_permission      = "0400"
+  directory_permission = "0755"
 }
