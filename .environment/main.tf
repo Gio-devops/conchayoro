@@ -1,8 +1,7 @@
 resource "aws_ecr_repository" "cyo_ecr_repo" {
   name                 = "${var.PROJECT_NAME}/${var.MODULE_NAME}"
   image_tag_mutability = "MUTABLE"
-  force_delete         = true
-
+  force_delete = "true"
   image_scanning_configuration {
     scan_on_push = true
   }
@@ -16,7 +15,7 @@ resource "aws_elastic_beanstalk_application" "cyo_eba" {
 resource "aws_elastic_beanstalk_environment" "cyo_ebef" {
   name                = "${var.MODULE_NAME}"
   application         = aws_elastic_beanstalk_application.cyo_eba.name
-  solution_stack_name = "64bit Amazon Linux 2023 v4.5.1 running Docker"
+  solution_stack_name = "64bit Amazon Linux 2023 v4.5.1 running Docker"
 
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
@@ -41,7 +40,7 @@ resource "aws_elastic_beanstalk_environment" "cyo_ebef" {
     name      = "ServiceRole"
     value     = "LabRole"
   }
-
+  
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "IamInstanceProfile"
@@ -51,7 +50,7 @@ resource "aws_elastic_beanstalk_environment" "cyo_ebef" {
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "EC2KeyName"
-    value     = "vockey"
+    value     = "gopay-bastion"
   }
 
   setting {
@@ -89,4 +88,5 @@ resource "aws_elastic_beanstalk_environment" "cyo_ebef" {
     name      = "Timeout"
     value     = "${var.Timeout}"
   }
+  
 }
