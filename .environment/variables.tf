@@ -12,9 +12,7 @@ variable "MODULE_NAME" {
 
 variable "SOLUTION_STACK_NAME" {
   type    = string
-  default = "64bit Amazon Linux 2 v3.4.10 running Docker"
 }
-
 
 variable "EnvironmentType" {
   type = string
